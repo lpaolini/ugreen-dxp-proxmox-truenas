@@ -1,0 +1,115 @@
+name: Publish apt repository
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version, for example 0.1.0"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install repository tooling
+        run: sudo apt-get update && sudo apt-get install -y dpkg-dev apt-utils
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            version="${{ inputs.version }}"
+            version="${version#v}"
+          elif [[ "${GITHUB_REF_TYPE}" = "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="0.0.0+${GITHUB_SHA::12}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build deb
+        run: ./packaging/build-deb.sh "${{ steps.version.outputs.version }}" dist
+
+      - name: Build apt repository
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo="apt-repo"
+          package="ugreen-dxp-proxmox-truenas"
+          version="${{ steps.version.outputs.version }}"
+
+          mkdir -p "${repo}/pool/main/u/${package}"
+          cp "dist/${package}_${version}_all.deb" "${repo}/pool/main/u/${package}/"
+
+          mkdir -p \
+            "${repo}/dists/stable/main/binary-amd64" \
+            "${repo}/dists/stable/main/binary-all"
+          (
+            cd "${repo}"
+            for arch in amd64 all; do
+              dpkg-scanpackages --arch "${arch}" pool > "dists/stable/main/binary-${arch}/Packages"
+              gzip -9 -k "dists/stable/main/binary-${arch}/Packages"
+            done
+
+            apt-ftparchive \
+              -o APT::FTPArchive::Release::Origin="ugreen-dxp-proxmox-truenas" \
+              -o APT::FTPArchive::Release::Label="ugreen-dxp-proxmox-truenas" \
+              -o APT::FTPArchive::Release::Suite="stable" \
+              -o APT::FTPArchive::Release::Codename="stable" \
+              -o APT::FTPArchive::Release::Architectures="amd64 all" \
+              -o APT::FTPArchive::Release::Components="main" \
+              release dists/stable > dists/stable/Release
+          )
+
+          {
+            printf '%s\n' '<!doctype html>'
+            printf '%s\n' '<html lang="en">'
+            printf '%s\n' '<head>'
+            printf '%s\n' '  <meta charset="utf-8">'
+            printf '%s\n' '  <title>ugreen-dxp-proxmox-truenas apt repository</title>'
+            printf '%s\n' '</head>'
+            printf '%s\n' '<body>'
+            printf '%s\n' '  <h1>ugreen-dxp-proxmox-truenas apt repository</h1>'
+            printf '%s\n' '  <pre>echo "deb [trusted=yes] https://'"${GITHUB_REPOSITORY_OWNER}"'.github.io/'"${GITHUB_REPOSITORY#*/}"' stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list'
+            printf '%s\n' 'sudo apt update'
+            printf '%s\n' 'sudo apt install ugreen-dxp-proxmox-truenas</pre>'
+            printf '%s\n' '</body>'
+            printf '%s\n' '</html>'
+          } > "${repo}/index.html"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apt-repo
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
