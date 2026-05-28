@@ -1,0 +1,9 @@
+[Unit]
+Description=Drive UGREEN rear fan from TrueNAS disk temperatures
+After=pve-guests.service
+Conflicts=fancontrol.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ugreen-truenas-fan.py
+Nice=10

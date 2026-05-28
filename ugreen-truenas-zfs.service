@@ -1,0 +1,8 @@
+[Unit]
+Description=Drive UGREEN front-panel LEDs from TrueNAS ZFS status
+After=pve-guests.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ugreen-truenas-zfs.py
+Nice=10
