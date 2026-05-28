@@ -19,10 +19,12 @@ DEBUG = os.environ.get("DEBUG", "1") == "1"
 FAN_PWM_PATH = os.environ.get("FAN_PWM_PATH", "/sys/class/hwmon/hwmon3/pwm3")
 FAN_PWM_ENABLE_PATH = os.environ.get("FAN_PWM_ENABLE_PATH", FAN_PWM_PATH + "_enable")
 FAN_INPUT_PATH = os.environ.get("FAN_INPUT_PATH", "/sys/class/hwmon/hwmon3/fan3_input")
+CPU_TEMP_PATH = os.environ.get("CPU_TEMP_PATH", "/sys/class/hwmon/hwmon3/temp1_input")
 
 # Comma-separated temp:pwm points. Temperatures are Celsius; PWM is 0..255.
-# The curve is intentionally conservative for HDDs and fails to MAX_PWM.
-FAN_CURVE = os.environ.get("FAN_CURVE", "30:90,35:105,40:125,45:155,50:190,55:225,60:255")
+# The HDD curve is intentionally conservative and fails to MAX_PWM.
+HDD_FAN_CURVE = os.environ.get("HDD_FAN_CURVE", "30:90,35:120,40:175,43:220,45:255")
+CPU_FAN_CURVE = os.environ.get("CPU_FAN_CURVE", "45:90,55:115,65:150,75:190,85:225,95:255")
 MIN_PWM = int(os.environ.get("MIN_PWM", "90"))
 MAX_PWM = int(os.environ.get("MAX_PWM", "255"))
 FAILSAFE_PWM = int(os.environ.get("FAILSAFE_PWM", str(MAX_PWM)))
@@ -91,7 +93,14 @@ def read_int(path):
         return None
 
 
-def parse_curve(spec):
+def read_temp_c(path):
+    raw = read_int(path)
+    if raw is None:
+        return None
+    return normalize_temp(raw)
+
+
+def parse_curve(name, spec):
     points = []
     for item in spec.split(","):
         item = item.strip()
@@ -101,10 +110,10 @@ def parse_curve(spec):
             temp, pwm = item.split(":", 1)
             points.append((float(temp), int(pwm)))
         except ValueError as e:
-            raise ValueError(f"invalid FAN_CURVE point {item!r}; expected temp:pwm") from e
+            raise ValueError(f"invalid {name} point {item!r}; expected temp:pwm") from e
 
     if len(points) < 2:
-        raise ValueError("FAN_CURVE must contain at least two temp:pwm points")
+        raise ValueError(f"{name} must contain at least two temp:pwm points")
 
     points.sort(key=lambda p: p[0])
     return [(t, int(clamp(p, 0, 255))) for t, p in points]
@@ -196,9 +205,16 @@ def describe_readings(readings):
 
 def main():
     try:
-        curve = parse_curve(FAN_CURVE)
+        hdd_curve = parse_curve("HDD_FAN_CURVE", HDD_FAN_CURVE)
+        cpu_curve = parse_curve("CPU_FAN_CURVE", CPU_FAN_CURVE)
     except ValueError as e:
         log(str(e))
+        set_fan_pwm(FAILSAFE_PWM)
+        sys.exit(1)
+
+    cpu_temp = read_temp_c(CPU_TEMP_PATH)
+    if cpu_temp is None:
+        log(f"CPU temperature read failed: {CPU_TEMP_PATH}")
         set_fan_pwm(FAILSAFE_PWM)
         sys.exit(1)
 
@@ -214,9 +230,14 @@ def main():
         sys.exit(1)
 
     hottest = max(readings, key=lambda r: r.temp_c)
-    pwm = pwm_for_temp(hottest.temp_c, curve)
+    hdd_pwm = pwm_for_temp(hottest.temp_c, hdd_curve)
+    cpu_pwm = pwm_for_temp(cpu_temp, cpu_curve)
+    pwm = max(hdd_pwm, cpu_pwm)
     dbg(f"Disk temperatures: {describe_readings(readings)}")
-    log(f"hottest disk temp={hottest.temp_c:.1f}C ({hottest.chip}/{hottest.feature}), pwm={pwm}")
+    log(
+        f"hottest disk temp={hottest.temp_c:.1f}C ({hottest.chip}/{hottest.feature}), "
+        f"hdd_pwm={hdd_pwm}, cpu temp={cpu_temp:.1f}C, cpu_pwm={cpu_pwm}, pwm={pwm}"
+    )
     set_fan_pwm(pwm)
 
 
