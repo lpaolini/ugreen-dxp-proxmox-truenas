@@ -6,15 +6,15 @@ BIN_DIR="/usr/local/bin"
 SYSTEMD_DIR="/etc/systemd/system"
 
 PYTHON_SCRIPTS=(
-  "ugreen-truenas-zfs.py"
-  "ugreen-truenas-fan.py"
+  "zfs/ugreen-truenas-zfs.py"
+  "fan/ugreen-truenas-fan.py"
 )
 
 SYSTEMD_UNITS=(
-  "ugreen-truenas-zfs.service"
-  "ugreen-truenas-zfs.timer"
-  "ugreen-truenas-fan.service"
-  "ugreen-truenas-fan.timer"
+  "zfs/ugreen-truenas-zfs.service"
+  "zfs/ugreen-truenas-zfs.timer"
+  "fan/ugreen-truenas-fan.service"
+  "fan/ugreen-truenas-fan.timer"
 )
 
 TIMERS=(
@@ -42,13 +42,13 @@ done
 install -d -m 0755 "${BIN_DIR}" "${SYSTEMD_DIR}"
 
 for file in "${PYTHON_SCRIPTS[@]}"; do
-  install -m 0755 "${SCRIPT_DIR}/${file}" "${BIN_DIR}/${file}"
-  echo "Installed ${BIN_DIR}/${file}"
+  install -m 0755 "${SCRIPT_DIR}/${file}" "${BIN_DIR}/$(basename "${file}")"
+  echo "Installed ${BIN_DIR}/$(basename "${file}")"
 done
 
 for file in "${SYSTEMD_UNITS[@]}"; do
-  install -m 0644 "${SCRIPT_DIR}/${file}" "${SYSTEMD_DIR}/${file}"
-  echo "Installed ${SYSTEMD_DIR}/${file}"
+  install -m 0644 "${SCRIPT_DIR}/${file}" "${SYSTEMD_DIR}/$(basename "${file}")"
+  echo "Installed ${SYSTEMD_DIR}/$(basename "${file}")"
 done
 
 systemctl daemon-reload
