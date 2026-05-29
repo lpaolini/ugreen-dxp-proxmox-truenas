@@ -2,9 +2,9 @@
 # Poll ZFS status inside the TrueNAS VM and drive the UGREEN front-panel LEDs.
 # Requires: qemu-guest-agent running inside TrueNAS and the ugreen LED driver
 # exposing /sys/class/leds/disk[1-4]/color.
+import argparse
 import json
 import os
-import argparse
 import signal
 import subprocess
 import sys
@@ -95,19 +95,23 @@ def set_led(n, state_key):
     dbg(f"LED {n} -> {state_key}")
     if not os.path.isdir(d):
         log(f"LED sysfs missing: {d}")
-        return
+        return False
 
+    ok = True
     if s.color is not None:
-        _write(f"{d}/color", s.color)
+        ok = _write(f"{d}/color", s.color) and ok
     if s.blink_type is not None:
-        _write(f"{d}/blink_type", s.blink_type)
+        ok = _write(f"{d}/blink_type", s.blink_type) and ok
     if s.brightness is not None:
-        _write(f"{d}/brightness", s.brightness)
+        ok = _write(f"{d}/brightness", s.brightness) and ok
+    return ok
 
 
 def set_all_leds(state_key):
+    ok = True
     for n in BAYS:
-        set_led(n, state_key)
+        ok = set_led(n, state_key) and ok
+    return ok
 
 
 def build_guest_cmd(bays):
@@ -296,7 +300,7 @@ def control_once():
 
 def leds_off():
     log("turning front-panel LEDs off")
-    set_all_leds("OFF")
+    return set_all_leds("OFF")
 
 
 def request_stop(signum, _frame):
@@ -319,13 +323,13 @@ def run_loop():
 
 def main():
     parser = argparse.ArgumentParser(description="Drive UGREEN front-panel LEDs from TrueNAS ZFS status")
-    parser.add_argument("--start", action="store_true", help="run continuously instead of polling once")
-    parser.add_argument("--stop", action="store_true", help="turn front-panel LEDs off and exit")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--start", action="store_true", help="run continuously instead of polling once")
+    mode.add_argument("--stop", action="store_true", help="turn front-panel LEDs off and exit")
     args = parser.parse_args()
 
     if args.stop:
-        leds_off()
-        return
+        sys.exit(0 if leds_off() else 1)
 
     if args.start:
         run_loop()

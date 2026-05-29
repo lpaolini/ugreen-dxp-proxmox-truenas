@@ -2,10 +2,10 @@
 # Poll disk temperatures inside the TrueNAS VM and drive the UGREEN rear fan.
 # Requires: qemu-guest-agent running inside TrueNAS, lm-sensors/drivetemp in the
 # guest, and the UGREEN/it87 hwmon driver exposed on the Proxmox host.
+import argparse
 import json
 import os
 import re
-import argparse
 import signal
 import subprocess
 import sys
@@ -275,8 +275,9 @@ def run_loop():
 
 def main():
     parser = argparse.ArgumentParser(description="Drive UGREEN fan PWM from TrueNAS disk and host CPU temperatures")
-    parser.add_argument("--start", action="store_true", help="run continuously instead of polling once")
-    parser.add_argument("--stop", action="store_true", help="reset the fan PWM controller to automatic mode and exit")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--start", action="store_true", help="run continuously instead of polling once")
+    mode.add_argument("--stop", action="store_true", help="reset the fan PWM controller to automatic mode and exit")
     args = parser.parse_args()
 
     if args.stop:
