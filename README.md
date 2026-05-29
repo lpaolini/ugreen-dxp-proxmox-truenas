@@ -57,12 +57,12 @@ commonly adjusted settings are `VMID`, `POLL_INTERVAL`, `FAN_PWM_PATH`,
 
 ## Install from GitHub Pages
 
-After this repository is renamed to `ugreen-dxp-proxmox-truenas` and GitHub
-Pages is enabled from GitHub Actions, publish a release tag such as `v0.1.0`.
-The workflow will build the Debian package and publish an apt repository at:
+After GitHub Pages is enabled from GitHub Actions, publish a release tag such as
+`v0.1.0`. The workflow will build the Debian package, sign the apt repository,
+and publish it at:
 
 ```text
-https://<github-user-or-org>.github.io/ugreen-dxp-proxmox-truenas/
+https://lpaolini.github.io/ugreen-temp/
 ```
 
 If GitHub rejects a tag deployment with an environment protection error, open
@@ -70,12 +70,21 @@ If GitHub rejects a tag deployment with an environment protection error, open
 match `v*`. Alternatively, run the workflow manually from the default branch and
 set the `version` input to the release version, for example `0.1.0`.
 
-On the Proxmox host, add that apt repository and install the package:
+On the Proxmox host, install the repository signing key, add the signed apt
+repository, and install the package:
 
 ```bash
-echo "deb [trusted=yes] https://<github-user-or-org>.github.io/ugreen-dxp-proxmox-truenas stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://lpaolini.github.io/ugreen-temp/ugreen-dxp-proxmox-truenas.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://lpaolini.github.io/ugreen-temp stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
 sudo apt update
 sudo apt install ugreen-dxp-proxmox-truenas
+```
+
+For a fork or renamed repository, replace the GitHub Pages URL with:
+
+```text
+https://<github-user-or-org>.github.io/<repository-name>/
 ```
 
 The package installs the helpers to `/usr/bin`, installs the systemd units to
@@ -102,6 +111,25 @@ Then restart the services so systemd starts them with the updated configuration:
 sudo systemctl restart ugreen-truenas-fan.service
 sudo systemctl restart ugreen-truenas-zfs.service
 ```
+
+## Repository signing
+
+The GitHub Actions workflow signs the apt repository metadata before publishing
+to GitHub Pages. It expects an ASCII-armored private GPG key in the repository
+secret `APT_SIGNING_KEY`. If the key has a passphrase, also set
+`APT_SIGNING_PASSPHRASE`.
+
+Create a signing key locally:
+
+```bash
+gpg --quick-generate-key "ugreen-dxp-proxmox-truenas apt <lpaolini@users.noreply.github.com>" ed25519 sign 2y
+gpg --list-secret-keys --keyid-format=long
+gpg --armor --export-secret-keys <fingerprint>
+```
+
+Paste the exported private key into `APT_SIGNING_KEY`. The workflow derives and
+publishes the public key as `ugreen-dxp-proxmox-truenas.asc`; client machines use
+that public key through the `signed-by=` apt source option.
 
 ## Build locally
 
