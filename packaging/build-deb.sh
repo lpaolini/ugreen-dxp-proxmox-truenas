@@ -24,14 +24,14 @@ install -d -m 0755 \
   "${PKG_DIR}/lib/systemd/system" \
   "${OUT_DIR}"
 
-install -m 0755 fan/ugreen-truenas-fan.py "${PKG_DIR}/usr/bin/ugreen-truenas-fan.py"
-install -m 0755 zfs/ugreen-truenas-zfs.py "${PKG_DIR}/usr/bin/ugreen-truenas-zfs.py"
-install -m 0644 fan/ugreen-truenas-fan.conf "${PKG_DIR}/etc/ugreen-truenas-fan.conf"
-install -m 0644 zfs/ugreen-truenas-zfs.conf "${PKG_DIR}/etc/ugreen-truenas-zfs.conf"
+install -m 0755 src/fan/ugreen-truenas-fan.py "${PKG_DIR}/usr/bin/ugreen-truenas-fan.py"
+install -m 0755 src/zfs/ugreen-truenas-zfs.py "${PKG_DIR}/usr/bin/ugreen-truenas-zfs.py"
+install -m 0644 src/fan/ugreen-truenas-fan.conf "${PKG_DIR}/etc/ugreen-truenas-fan.conf"
+install -m 0644 src/zfs/ugreen-truenas-zfs.conf "${PKG_DIR}/etc/ugreen-truenas-zfs.conf"
 
 for unit in \
-  fan/ugreen-truenas-fan.service \
-  zfs/ugreen-truenas-zfs.service
+  src/fan/ugreen-truenas-fan.service \
+  src/zfs/ugreen-truenas-zfs.service
 do
   sed 's#/usr/local/bin/#/usr/bin/#g' "${unit}" > "${PKG_DIR}/lib/systemd/system/$(basename "${unit}")"
   chmod 0644 "${PKG_DIR}/lib/systemd/system/$(basename "${unit}")"
@@ -44,7 +44,7 @@ Section: utils
 Priority: optional
 Architecture: all
 Maintainer: lpaolini <lpaolini@users.noreply.github.com>
-Depends: python3, systemd, qemu-server
+Depends: python3, systemd, qemu-server, led-ugreen-dkms (>= 0.3)
 Description: UGREEN DXP Proxmox/TrueNAS fan and ZFS LED helpers
  Systemd units and Python helpers for driving UGREEN fan PWM and front-panel
  disk LEDs from a TrueNAS VM running under Proxmox.

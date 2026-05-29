@@ -53,7 +53,9 @@ commonly adjusted settings are `VMID`, `POLL_INTERVAL`, `FAN_PWM_PATH`,
 - `sensors -j` available inside the TrueNAS VM for disk temperature polling.
 - `jq`, `lsblk`, and `zpool` available inside the TrueNAS VM for LED state
   polling.
-- UGREEN fan and LED sysfs devices exposed on the Proxmox host.
+- UGREEN fan sysfs devices exposed on the Proxmox host.
+- `led-ugreen-dkms` 0.3 or newer installed on the Proxmox host, so disk LEDs are
+  exposed under `/sys/class/leds/disk*`.
 
 ## Install from GitHub Pages
 
@@ -71,15 +73,22 @@ match `v*`. Alternatively, run the workflow manually from the default branch and
 set the `version` input to the release version, for example `0.1.0`.
 
 On the Proxmox host, install the repository signing key, add the signed apt
-repository, and install the package:
+repository, install the upstream UGREEN LED DKMS package, and install this
+package:
 
 ```bash
 sudo install -d -m 0755 /etc/apt/keyrings
 curl -fsSL https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/ugreen-dxp-proxmox-truenas.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg >/dev/null
 echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://lpaolini.github.io/ugreen-dxp-proxmox-truenas stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
 sudo apt update
+curl -fLO https://github.com/miskcoo/ugreen_leds_controller/releases/download/v0.3/led-ugreen-dkms_0.3_amd64.deb
+sudo apt install ./led-ugreen-dkms_0.3_amd64.deb
 sudo apt install ugreen-dxp-proxmox-truenas
 ```
+
+The `led-ugreen-dkms` package is a dependency of this package, but it is not
+published in this apt repository. Installing the upstream `.deb` first satisfies
+that dependency.
 
 For a fork or renamed repository, replace the GitHub Pages URL with:
 
