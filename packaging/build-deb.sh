@@ -19,12 +19,15 @@ PKG_DIR="${BUILD_DIR}/${PACKAGE}_${VERSION}_all"
 
 install -d -m 0755 \
   "${PKG_DIR}/DEBIAN" \
+  "${PKG_DIR}/etc" \
   "${PKG_DIR}/usr/bin" \
   "${PKG_DIR}/lib/systemd/system" \
   "${OUT_DIR}"
 
 install -m 0755 fan/ugreen-truenas-fan.py "${PKG_DIR}/usr/bin/ugreen-truenas-fan.py"
 install -m 0755 zfs/ugreen-truenas-zfs.py "${PKG_DIR}/usr/bin/ugreen-truenas-zfs.py"
+install -m 0644 fan/ugreen-truenas-fan.conf "${PKG_DIR}/etc/ugreen-truenas-fan.conf"
+install -m 0644 zfs/ugreen-truenas-zfs.conf "${PKG_DIR}/etc/ugreen-truenas-zfs.conf"
 
 for unit in \
   fan/ugreen-truenas-fan.service \
@@ -46,6 +49,11 @@ Description: UGREEN DXP Proxmox/TrueNAS fan and ZFS LED helpers
  Systemd units and Python helpers for driving UGREEN fan PWM and front-panel
  disk LEDs from a TrueNAS VM running under Proxmox.
 CONTROL
+
+cat > "${PKG_DIR}/DEBIAN/conffiles" <<'CONFFILES'
+/etc/ugreen-truenas-fan.conf
+/etc/ugreen-truenas-zfs.conf
+CONFFILES
 
 cat > "${PKG_DIR}/DEBIAN/postinst" <<'POSTINST'
 #!/usr/bin/env bash

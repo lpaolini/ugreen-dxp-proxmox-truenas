@@ -13,7 +13,7 @@ import syslog
 import threading
 from dataclasses import dataclass
 
-VMID = os.environ.get("VMID", "101")
+VMID = os.environ.get("VMID", "").strip()
 TAG = "ugreen-truenas-fan"
 DEBUG = os.environ.get("DEBUG", "1") == "1"
 
@@ -60,6 +60,13 @@ def log(msg):
 def dbg(msg):
     if DEBUG:
         print(f"[{TAG}][debug] {msg}", file=sys.stderr)
+
+
+def require_vmid():
+    if VMID:
+        return True
+    log("VMID is not configured; set VMID in /etc/ugreen-truenas-fan.conf")
+    return False
 
 
 def clamp(value, low, high):
@@ -282,6 +289,9 @@ def main():
 
     if args.stop:
         sys.exit(0 if set_fan_auto() else 1)
+
+    if not require_vmid():
+        sys.exit(1)
 
     if args.start:
         run_loop()

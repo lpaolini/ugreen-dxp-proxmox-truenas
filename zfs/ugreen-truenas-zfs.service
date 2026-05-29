@@ -4,6 +4,7 @@ After=pve-guests.service
 
 [Service]
 Type=simple
+EnvironmentFile=/etc/ugreen-truenas-zfs.conf
 ExecStart=/usr/local/bin/ugreen-truenas-zfs.py --start
 ExecStopPost=/usr/local/bin/ugreen-truenas-zfs.py --stop
 Restart=on-failure

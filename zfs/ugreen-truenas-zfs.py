@@ -12,8 +12,8 @@ import syslog
 import threading
 from dataclasses import dataclass
 
-VMID = os.environ.get("VMID", "101")
-LED_BASE = "/sys/class/leds"
+VMID = os.environ.get("VMID", "").strip()
+LED_BASE = os.environ.get("LED_BASE", "/sys/class/leds")
 TAG = "ugreen-truenas-zfs"
 DEBUG = os.environ.get("DEBUG", "1") == "1"
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "30"))
@@ -21,10 +21,10 @@ LEDS_OFF_ON_EXIT = os.environ.get("LEDS_OFF_ON_EXIT", "1") == "1"
 # Bay N is wired to the path shown — UGREEN backplane constant.
 # Verify with `ls -l /dev/disk/by-path/` inside the guest.
 BAYS = {
-    "1": "/dev/disk/by-path/pci-0000:00:10.0-ata-1",
-    "2": "/dev/disk/by-path/pci-0000:00:10.0-ata-2",
-    "3": "/dev/disk/by-path/pci-0000:00:10.0-ata-3",
-    "4": "/dev/disk/by-path/pci-0000:00:10.0-ata-4",
+    "1": os.environ.get("BAY_1_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-1"),
+    "2": os.environ.get("BAY_2_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-2"),
+    "3": os.environ.get("BAY_3_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-3"),
+    "4": os.environ.get("BAY_4_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-4"),
 }
 
 
@@ -63,7 +63,7 @@ STATE_RANK = {"ONLINE": 0, "ONLINE_ALERT": 1, "OFFLINE": 2, "DEGRADED": 3,
 UNRANKED = len(STATE_RANK)  # rank for any unexpected state — sorts above all known ones
 
 # Fill ratio at or above which an ONLINE leaf is upgraded to ONLINE_ALERT.
-ALERT_THRESHOLD = 0.75
+ALERT_THRESHOLD = float(os.environ.get("ALERT_THRESHOLD", "0.75"))
 
 syslog.openlog(TAG)
 STOP_REQUESTED = threading.Event()
@@ -77,6 +77,13 @@ def log(msg):
 def dbg(msg):
     if DEBUG:
         print(f"[{TAG}][debug] {msg}", file=sys.stderr)
+
+
+def require_vmid():
+    if VMID:
+        return True
+    log("VMID is not configured; set VMID in /etc/ugreen-truenas-zfs.conf")
+    return False
 
 
 def _write(path, value):
@@ -330,6 +337,9 @@ def main():
 
     if args.stop:
         sys.exit(0 if leds_off() else 1)
+
+    if not require_vmid():
+        sys.exit(1)
 
     if args.start:
         run_loop()

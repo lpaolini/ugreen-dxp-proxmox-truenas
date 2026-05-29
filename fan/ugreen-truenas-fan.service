@@ -5,7 +5,7 @@ Conflicts=fancontrol.service
 
 [Service]
 Type=simple
-Environment=FAN_PWM_ENABLE_PATH=/sys/class/hwmon/hwmon3/pwm3_enable
+EnvironmentFile=/etc/ugreen-truenas-fan.conf
 ExecStart=/usr/local/bin/ugreen-truenas-fan.py --start
 ExecStopPost=/usr/local/bin/ugreen-truenas-fan.py --stop
 Restart=on-failure
