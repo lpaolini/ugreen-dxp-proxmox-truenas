@@ -5,9 +5,12 @@
 import json
 import os
 import re
+import argparse
+import signal
 import subprocess
 import sys
 import syslog
+import threading
 from dataclasses import dataclass
 
 VMID = os.environ.get("VMID", "101")
@@ -29,12 +32,16 @@ MIN_PWM = int(os.environ.get("MIN_PWM", "90"))
 MAX_PWM = int(os.environ.get("MAX_PWM", "255"))
 FAILSAFE_PWM = int(os.environ.get("FAILSAFE_PWM", str(MAX_PWM)))
 MANUAL_PWM_ENABLE_VALUE = os.environ.get("MANUAL_PWM_ENABLE_VALUE", "1")
+AUTO_PWM_ENABLE_VALUE = os.environ.get("AUTO_PWM_ENABLE_VALUE", "2")
+POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "30"))
+RESET_PWM_ON_EXIT = os.environ.get("RESET_PWM_ON_EXIT", "1") == "1"
 
 # Limit temperature extraction to disk-like sensors so CPU/package temps do not
 # spin the storage fan. Override if your TrueNAS sensor chip names differ.
 TEMP_CHIP_REGEX = os.environ.get("TEMP_CHIP_REGEX", r"(?i)(drivetemp|nvme|ata|scsi|sas|sat|disk|hdd|ssd)")
 
 syslog.openlog(TAG)
+STOP_REQUESTED = threading.Event()
 
 
 @dataclass(frozen=True)
@@ -82,6 +89,13 @@ def set_fan_pwm(pwm):
     rpm = read_int(FAN_INPUT_PATH)
     rpm_text = "unknown" if rpm is None else str(rpm)
     log(f"fan pwm={pwm}, rpm={rpm_text}, path={FAN_PWM_PATH}")
+    return ok
+
+
+def set_fan_auto():
+    ok = _write(FAN_PWM_ENABLE_PATH, AUTO_PWM_ENABLE_VALUE)
+    if ok:
+        log(f"fan pwm control reset to auto: {FAN_PWM_ENABLE_PATH}={AUTO_PWM_ENABLE_VALUE}")
     return ok
 
 
@@ -203,31 +217,31 @@ def describe_readings(readings):
     )
 
 
-def main():
+def control_once():
     try:
         hdd_curve = parse_curve("HDD_FAN_CURVE", HDD_FAN_CURVE)
         cpu_curve = parse_curve("CPU_FAN_CURVE", CPU_FAN_CURVE)
     except ValueError as e:
         log(str(e))
         set_fan_pwm(FAILSAFE_PWM)
-        sys.exit(1)
+        return False
 
     cpu_temp = read_temp_c(CPU_TEMP_PATH)
     if cpu_temp is None:
         log(f"CPU temperature read failed: {CPU_TEMP_PATH}")
         set_fan_pwm(FAILSAFE_PWM)
-        sys.exit(1)
+        return False
 
     sensors_obj = fetch_guest_sensors()
     if sensors_obj is None:
         set_fan_pwm(FAILSAFE_PWM)
-        sys.exit(1)
+        return False
 
     readings = collect_disk_temps(sensors_obj)
     if not readings:
         log(f"no disk temperature readings matched TEMP_CHIP_REGEX={TEMP_CHIP_REGEX!r}")
         set_fan_pwm(FAILSAFE_PWM)
-        sys.exit(1)
+        return False
 
     hottest = max(readings, key=lambda r: r.temp_c)
     hdd_pwm = pwm_for_temp(hottest.temp_c, hdd_curve)
@@ -238,7 +252,41 @@ def main():
         f"hottest disk temp={hottest.temp_c:.1f}C ({hottest.chip}/{hottest.feature}), "
         f"hdd_pwm={hdd_pwm}, cpu temp={cpu_temp:.1f}C, cpu_pwm={cpu_pwm}, pwm={pwm}"
     )
-    set_fan_pwm(pwm)
+    return set_fan_pwm(pwm)
+
+
+def request_stop(signum, _frame):
+    dbg(f"Received signal {signum}, stopping")
+    STOP_REQUESTED.set()
+
+
+def run_loop():
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    log(f"starting fan control loop, interval={POLL_INTERVAL:g}s")
+    try:
+        while not STOP_REQUESTED.is_set():
+            control_once()
+            STOP_REQUESTED.wait(POLL_INTERVAL)
+    finally:
+        if RESET_PWM_ON_EXIT:
+            set_fan_auto()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Drive UGREEN fan PWM from TrueNAS disk and host CPU temperatures")
+    parser.add_argument("--start", action="store_true", help="run continuously instead of polling once")
+    parser.add_argument("--stop", action="store_true", help="reset the fan PWM controller to automatic mode and exit")
+    args = parser.parse_args()
+
+    if args.stop:
+        sys.exit(0 if set_fan_auto() else 1)
+
+    if args.start:
+        run_loop()
+        return
+
+    sys.exit(0 if control_once() else 1)
 
 
 if __name__ == "__main__":

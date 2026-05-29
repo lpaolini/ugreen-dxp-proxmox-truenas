@@ -1,6 +1,6 @@
 # ugreen-dxp-proxmox-truenas
 
-Systemd timers and Python helpers for driving UGREEN DXP fan PWM and
+Systemd services and Python helpers for driving UGREEN DXP fan PWM and
 front-panel disk LEDs from a TrueNAS VM running under Proxmox.
 
 ## Install from GitHub Pages
@@ -13,6 +13,11 @@ The workflow will build the Debian package and publish an apt repository at:
 https://<github-user-or-org>.github.io/ugreen-dxp-proxmox-truenas/
 ```
 
+If GitHub rejects a tag deployment with an environment protection error, open
+`Settings -> Environments -> github-pages` and allow deployments from tags that
+match `v*`. Alternatively, run the workflow manually from the default branch and
+set the `version` input to the release version, for example `0.1.0`.
+
 On the Proxmox host, add that apt repository and install the package:
 
 ```bash
@@ -22,7 +27,7 @@ sudo apt install ugreen-dxp-proxmox-truenas
 ```
 
 The package installs the helpers to `/usr/bin`, installs the systemd units to
-`/lib/systemd/system`, reloads systemd, and enables the fan and ZFS timers.
+`/lib/systemd/system`, reloads systemd, and enables the fan and ZFS services.
 
 ## Build locally
 

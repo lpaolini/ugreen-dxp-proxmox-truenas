@@ -4,6 +4,13 @@ After=pve-guests.service
 Conflicts=fancontrol.service
 
 [Service]
-Type=oneshot
-ExecStart=/usr/local/bin/ugreen-truenas-fan.py
+Type=simple
+Environment=FAN_PWM_ENABLE_PATH=/sys/class/hwmon/hwmon3/pwm3_enable
+ExecStart=/usr/local/bin/ugreen-truenas-fan.py --start
+ExecStopPost=/usr/local/bin/ugreen-truenas-fan.py --stop
+Restart=on-failure
+RestartSec=10s
 Nice=10
+
+[Install]
+WantedBy=multi-user.target

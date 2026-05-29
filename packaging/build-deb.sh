@@ -28,9 +28,7 @@ install -m 0755 zfs/ugreen-truenas-zfs.py "${PKG_DIR}/usr/bin/ugreen-truenas-zfs
 
 for unit in \
   fan/ugreen-truenas-fan.service \
-  fan/ugreen-truenas-fan.timer \
-  zfs/ugreen-truenas-zfs.service \
-  zfs/ugreen-truenas-zfs.timer
+  zfs/ugreen-truenas-zfs.service
 do
   sed 's#/usr/local/bin/#/usr/bin/#g' "${unit}" > "${PKG_DIR}/lib/systemd/system/$(basename "${unit}")"
   chmod 0644 "${PKG_DIR}/lib/systemd/system/$(basename "${unit}")"
@@ -45,7 +43,7 @@ Architecture: all
 Maintainer: lpaolini <lpaolini@users.noreply.github.com>
 Depends: python3, systemd, qemu-server
 Description: UGREEN DXP Proxmox/TrueNAS fan and ZFS LED helpers
- Systemd timers and Python helpers for driving UGREEN fan PWM and front-panel
+ Systemd units and Python helpers for driving UGREEN fan PWM and front-panel
  disk LEDs from a TrueNAS VM running under Proxmox.
 CONTROL
 
@@ -55,8 +53,10 @@ set -e
 
 if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload || true
-  systemctl enable --now ugreen-truenas-zfs.timer || true
-  systemctl enable --now ugreen-truenas-fan.timer || true
+  systemctl disable --now ugreen-truenas-zfs.timer || true
+  systemctl enable --now ugreen-truenas-zfs.service || true
+  systemctl disable --now ugreen-truenas-fan.timer || true
+  systemctl enable --now ugreen-truenas-fan.service || true
 fi
 POSTINST
 
@@ -67,8 +67,12 @@ set -e
 if [[ "${1:-}" = "remove" || "${1:-}" = "deconfigure" ]]; then
   if command -v systemctl >/dev/null 2>&1; then
     systemctl disable --now ugreen-truenas-zfs.timer || true
+    systemctl disable --now ugreen-truenas-zfs.service || true
     systemctl disable --now ugreen-truenas-fan.timer || true
+    systemctl disable --now ugreen-truenas-fan.service || true
   fi
+  /usr/bin/ugreen-truenas-zfs.py --stop || true
+  /usr/bin/ugreen-truenas-fan.py --stop || true
 fi
 PRERM
 

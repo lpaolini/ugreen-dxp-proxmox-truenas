@@ -4,15 +4,20 @@
 # exposing /sys/class/leds/disk[1-4]/color.
 import json
 import os
+import argparse
+import signal
 import subprocess
 import sys
 import syslog
+import threading
 from dataclasses import dataclass
 
 VMID = os.environ.get("VMID", "101")
 LED_BASE = "/sys/class/leds"
 TAG = "ugreen-truenas-zfs"
 DEBUG = os.environ.get("DEBUG", "1") == "1"
+POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "30"))
+LEDS_OFF_ON_EXIT = os.environ.get("LEDS_OFF_ON_EXIT", "1") == "1"
 # Bay N is wired to the path shown — UGREEN backplane constant.
 # Verify with `ls -l /dev/disk/by-path/` inside the guest.
 BAYS = {
@@ -61,6 +66,7 @@ UNRANKED = len(STATE_RANK)  # rank for any unexpected state — sorts above all 
 ALERT_THRESHOLD = 0.75
 
 syslog.openlog(TAG)
+STOP_REQUESTED = threading.Event()
 
 
 def log(msg):
@@ -79,6 +85,8 @@ def _write(path, value):
             f.write(str(value) + "\n")
     except OSError as e:
         log(f"sysfs write failed: {path}={value!r}: {e}")
+        return False
+    return True
 
 
 def set_led(n, state_key):
@@ -126,7 +134,7 @@ def flash_checking_pattern():
 
 def fetch_guest_report():
     """Run the guest command via qm; return the parsed guest JSON report.
-    On any failure, drive LEDs to an error state and exit 1."""
+    On any failure, drive LEDs to an error state and return None."""
     dbg(f"Querying guest for report...")
     try:
         proc = subprocess.run(
@@ -138,11 +146,11 @@ def fetch_guest_report():
     except subprocess.CalledProcessError as e:
         log(f"qm guest exec failed (rc={e.returncode}): {(e.stderr or '').strip()}")
         set_all_leds("ERROR")
-        sys.exit(1)
+        return None
     except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError) as e:
         log(f"qm guest exec failed: {e}")
         set_all_leds("ERROR")
-        sys.exit(1)
+        return None
 
     rc = payload.get("exitcode", 1)
     out = payload.get("out-data", "") or ""
@@ -150,7 +158,7 @@ def fetch_guest_report():
     if rc != 0 or not out:
         log(f"guest command failed (rc={rc})")
         set_all_leds("ERROR")
-        sys.exit(1)
+        return None
 
     try:
         # return json.loads(out)
@@ -162,7 +170,7 @@ def fetch_guest_report():
     except json.JSONDecodeError as e:
         log(f"guest JSON parse failed: {e}; raw={out[:200]!r}")
         set_all_leds("ERROR")
-        sys.exit(1)
+        return None
 
 
 def build_device_to_partuuids(lsblk_obj):
@@ -269,16 +277,61 @@ def update_leds(bays, device_to_partuuids, vdev_state, resilvering):
         set_led(bay, "MISSING" if i < missing_count else "OFF")
 
 
-def main():
+def control_once():
     dbg(f"Starting: VMID={VMID}")
     flash_checking_pattern()
 
-    bays, lsblk, zpool = fetch_guest_report()
+    report = fetch_guest_report()
+    if report is None:
+        return False
+
+    bays, lsblk, zpool = report
     device_to_partuuids = build_device_to_partuuids(lsblk)
     vdev_state = build_vdev_state(zpool)
     resilvering = is_resilvering(zpool)
 
     update_leds(bays, device_to_partuuids, vdev_state, resilvering)
+    return True
+
+
+def leds_off():
+    log("turning front-panel LEDs off")
+    set_all_leds("OFF")
+
+
+def request_stop(signum, _frame):
+    dbg(f"Received signal {signum}, stopping")
+    STOP_REQUESTED.set()
+
+
+def run_loop():
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    log(f"starting ZFS LED control loop, interval={POLL_INTERVAL:g}s")
+    try:
+        while not STOP_REQUESTED.is_set():
+            control_once()
+            STOP_REQUESTED.wait(POLL_INTERVAL)
+    finally:
+        if LEDS_OFF_ON_EXIT:
+            leds_off()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Drive UGREEN front-panel LEDs from TrueNAS ZFS status")
+    parser.add_argument("--start", action="store_true", help="run continuously instead of polling once")
+    parser.add_argument("--stop", action="store_true", help="turn front-panel LEDs off and exit")
+    args = parser.parse_args()
+
+    if args.stop:
+        leds_off()
+        return
+
+    if args.start:
+        run_loop()
+        return
+
+    sys.exit(0 if control_once() else 1)
 
 
 if __name__ == "__main__":
