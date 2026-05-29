@@ -62,7 +62,7 @@ After GitHub Pages is enabled from GitHub Actions, publish a release tag such as
 and publish it at:
 
 ```text
-https://lpaolini.github.io/ugreen-temp/
+https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/
 ```
 
 If GitHub rejects a tag deployment with an environment protection error, open
@@ -75,8 +75,8 @@ repository, and install the package:
 
 ```bash
 sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://lpaolini.github.io/ugreen-temp/ugreen-dxp-proxmox-truenas.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg >/dev/null
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://lpaolini.github.io/ugreen-temp stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
+curl -fsSL https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/ugreen-dxp-proxmox-truenas.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://lpaolini.github.io/ugreen-dxp-proxmox-truenas stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
 sudo apt update
 sudo apt install ugreen-dxp-proxmox-truenas
 ```
