@@ -61,9 +61,7 @@ set -e
 
 if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload || true
-  systemctl disable --now ugreen-truenas-zfs.timer || true
   systemctl enable --now ugreen-truenas-zfs.service || true
-  systemctl disable --now ugreen-truenas-fan.timer || true
   systemctl enable --now ugreen-truenas-fan.service || true
 fi
 POSTINST
@@ -74,9 +72,7 @@ set -e
 
 if [[ "${1:-}" = "remove" || "${1:-}" = "deconfigure" ]]; then
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl disable --now ugreen-truenas-zfs.timer || true
     systemctl disable --now ugreen-truenas-zfs.service || true
-    systemctl disable --now ugreen-truenas-fan.timer || true
     systemctl disable --now ugreen-truenas-fan.service || true
   fi
   /usr/bin/ugreen-truenas-zfs.py --stop || true
