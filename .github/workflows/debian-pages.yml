@@ -1,0 +1,197 @@
+name: Publish Debian repository
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version, for example 0.1.0"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            apt-utils \
+            dpkg-dev \
+            gnupg
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            version="${{ inputs.version }}"
+            version="${version#v}"
+          elif [[ "${GITHUB_REF_TYPE}" = "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="0.0.0+${GITHUB_SHA::12}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build Debian package
+        run: ./packaging/build-deb.sh "${{ steps.version.outputs.version }}" dist
+
+      - name: Upload Debian package to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+          generate_release_notes: true
+
+      - name: Build APT repository
+        shell: bash
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_KEY_PASSPHRASE: ${{ secrets.APT_SIGNING_KEY_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+
+          package="ugreen-dxp-proxmox-truenas"
+          version="${{ steps.version.outputs.version }}"
+          repo_root="${PWD}/public/debian"
+          suite="stable"
+          component="main"
+          architectures="amd64 all"
+          package_dir="${repo_root}/pool/${component}/u/${package}"
+          download_dir="${PWD}/public/downloads"
+          deb_file="dist/${package}_${version}_all.deb"
+
+          if [[ -z "${APT_SIGNING_KEY}" ]]; then
+            echo "::error::Missing APT_SIGNING_KEY repository secret"
+            exit 1
+          fi
+
+          mkdir -p "${package_dir}" "${download_dir}"
+          cp "${deb_file}" "${package_dir}/"
+          cp "${deb_file}" "${download_dir}/${package}_latest.deb"
+
+          for arch in ${architectures}; do
+            binary_dir="${repo_root}/dists/${suite}/${component}/binary-${arch}"
+            mkdir -p "${binary_dir}"
+            (
+              cd "${repo_root}"
+              apt-ftparchive packages "pool/${component}/u/${package}"
+            ) > "${binary_dir}/Packages"
+            gzip -9c "${binary_dir}/Packages" > "${binary_dir}/Packages.gz"
+          done
+
+          cat > "${repo_root}/apt-release.conf" <<EOF
+          APT::FTPArchive::Release {
+            Origin "ugreen-dxp-proxmox-truenas";
+            Label "UGREEN DXP Proxmox TrueNAS";
+            Suite "${suite}";
+            Codename "${suite}";
+            Architectures "${architectures}";
+            Components "${component}";
+            Description "UGREEN DXP Proxmox and TrueNAS helper packages";
+          };
+          EOF
+
+          apt-ftparchive -c "${repo_root}/apt-release.conf" release "${repo_root}/dists/${suite}" \
+            > "${repo_root}/dists/${suite}/Release"
+          rm "${repo_root}/apt-release.conf"
+
+          export GNUPGHOME="${PWD}/.gnupg"
+          mkdir -p "${GNUPGHOME}"
+          chmod 700 "${GNUPGHOME}"
+          printf '%s' "${APT_SIGNING_KEY}" | gpg --batch --import
+
+          fingerprint="$(
+            gpg --batch --list-secret-keys --with-colons |
+              awk -F: '/^fpr:/ {print $10; exit}'
+          )"
+
+          if [[ -z "${fingerprint}" ]]; then
+            echo "::error::No signing key fingerprint found after importing APT_SIGNING_KEY"
+            exit 1
+          fi
+
+          gpg --batch --armor --export "${fingerprint}" > "${repo_root}/public.key"
+
+          sign_args=(--batch --yes --local-user "${fingerprint}")
+          if [[ -n "${APT_SIGNING_KEY_PASSPHRASE:-}" ]]; then
+            sign_args+=(--pinentry-mode loopback --passphrase "${APT_SIGNING_KEY_PASSPHRASE}")
+          fi
+
+          gpg "${sign_args[@]}" \
+            --clearsign \
+            --output "${repo_root}/dists/${suite}/InRelease" \
+            "${repo_root}/dists/${suite}/Release"
+
+          gpg "${sign_args[@]}" \
+            --armor \
+            --detach-sign \
+            --output "${repo_root}/dists/${suite}/Release.gpg" \
+            "${repo_root}/dists/${suite}/Release"
+
+      - name: Add repository landing page
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo="${PWD}/public"
+          base_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+
+          {
+            printf '%s\n' '<!doctype html>'
+            printf '%s\n' '<html lang="en">'
+            printf '%s\n' '<head>'
+            printf '%s\n' '  <meta charset="utf-8">'
+            printf '%s\n' '  <meta name="viewport" content="width=device-width, initial-scale=1">'
+            printf '%s\n' '  <title>UGREEN DXP Proxmox TrueNAS Debian Repository</title>'
+            printf '%s\n' '</head>'
+            printf '%s\n' '<body>'
+            printf '%s\n' '  <h1>UGREEN DXP Proxmox TrueNAS Debian Repository</h1>'
+            printf '%s\n' '  <pre>sudo install -d -m 0755 /etc/apt/keyrings'
+            printf '%s\n' 'curl -fsSL '"${base_url}"'/debian/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg'
+            printf '%s\n' 'echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] '"${base_url}"'/debian stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list'
+            printf '%s\n' 'sudo apt update'
+            printf '%s\n' 'sudo apt install ugreen-dxp-proxmox-truenas</pre>'
+            printf '%s\n' '  <p>Or download the latest .deb package directly:</p>'
+            printf '%s\n' '  <p><a href="downloads/ugreen-dxp-proxmox-truenas_latest.deb">ugreen-dxp-proxmox-truenas_latest.deb</a></p>'
+            printf '%s\n' '</body>'
+            printf '%s\n' '</html>'
+          } > "${repo}/index.html"
+          touch "${repo}/.nojekyll"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -65,13 +65,14 @@ Before installing this package, install the UGREEN DXP LED DKMS from
 on the Proxmox host. This is required because `ugreen-truenas-zfs.service`
 writes to the disk LED sysfs devices exposed by that DKMS.
 
-For now, the DKMS is not provided as an apt repository. It is published as an
-installable Debian package, so download the release `.deb` from
-[`lpaolini/ugreen-dxp-leds-dkms` releases](https://github.com/lpaolini/ugreen-dxp-leds-dkms/releases)
-and install it directly:
+The DKMS is published as a signed Debian repository and as a direct `.deb`
+download. Follow the install instructions from
+[`lpaolini/ugreen-dxp-leds-dkms`](https://github.com/lpaolini/ugreen-dxp-leds-dkms),
+or download the latest package directly:
 
 ```bash
-sudo apt install ./ugreen-dxp-leds-dkms_*_amd64.deb
+curl -LO https://lpaolini.github.io/ugreen-dxp-leds-dkms/downloads/ugreen-dxp-leds-dkms_latest.deb
+sudo apt install ./ugreen-dxp-leds-dkms_latest.deb
 ```
 
 ## Install from signed Debian repository (provided by GitHub Pages)
@@ -82,9 +83,9 @@ repository, and install this package:
 ```bash
 sudo install -d -m 0755 /etc/apt/keyrings
 
-curl -fsSL https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/ugreen-dxp-proxmox-truenas.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg >/dev/null
+curl -fsSL https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/debian/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg
 
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://lpaolini.github.io/ugreen-dxp-proxmox-truenas stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/debian stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
 
 sudo apt update
 sudo apt install ugreen-dxp-proxmox-truenas
@@ -194,7 +195,7 @@ GitHub Pages, recreate the signing secrets, and publish releases with `v*` tags.
 3. Add repository secrets in `Settings -> Secrets and variables -> Actions`:
 
    - `APT_SIGNING_KEY`: paste the full ASCII-armored private key exported above.
-   - `APT_SIGNING_PASSPHRASE`: set this only if the signing key has a passphrase.
+   - `APT_SIGNING_KEY_PASSPHRASE`: set this only if the signing key has a passphrase.
 
 4. Check the GitHub Pages environment:
 
@@ -208,7 +209,7 @@ GitHub Pages, recreate the signing secrets, and publish releases with `v*` tags.
    git push origin v0.1.0
    ```
 
-   The `Publish apt repository` workflow builds the Debian package, creates and
+   The `Publish Debian repository` workflow builds the Debian package, creates and
    signs the apt repository metadata, publishes the public signing key, and
    deploys everything to:
 
