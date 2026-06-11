@@ -65,7 +65,7 @@ jobs:
         shell: bash
         env:
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
-          APT_SIGNING_KEY_PASSPHRASE: ${{ secrets.APT_SIGNING_KEY_PASSPHRASE }}
+          APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
         run: |
           set -euo pipefail
 
@@ -132,8 +132,8 @@ jobs:
           gpg --batch --armor --export "${fingerprint}" > "${repo_root}/public.key"
 
           sign_args=(--batch --yes --local-user "${fingerprint}")
-          if [[ -n "${APT_SIGNING_KEY_PASSPHRASE:-}" ]]; then
-            sign_args+=(--pinentry-mode loopback --passphrase "${APT_SIGNING_KEY_PASSPHRASE}")
+          if [[ -n "${APT_SIGNING_PASSPHRASE:-}" ]]; then
+            sign_args+=(--pinentry-mode loopback --passphrase "${APT_SIGNING_PASSPHRASE}")
           fi
 
           gpg "${sign_args[@]}" \

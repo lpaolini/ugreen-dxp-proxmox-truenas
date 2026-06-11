@@ -195,7 +195,7 @@ GitHub Pages, recreate the signing secrets, and publish releases with `v*` tags.
 3. Add repository secrets in `Settings -> Secrets and variables -> Actions`:
 
    - `APT_SIGNING_KEY`: paste the full ASCII-armored private key exported above.
-   - `APT_SIGNING_KEY_PASSPHRASE`: set this only if the signing key has a passphrase.
+   - `APT_SIGNING_PASSPHRASE`: set this only if the signing key has a passphrase.
 
 4. Check the GitHub Pages environment:
 
