@@ -22,10 +22,11 @@ There are two services:
   PWM value from the configured disk and CPU fan curves, and writes that value to
   the UGREEN fan PWM sysfs path on the Proxmox host. If temperature collection
   fails, it uses the configured failsafe PWM.
-- `ugreen-truenas-zfs.service` polls `lsblk` and `zpool status -pj main` inside
-  the TrueNAS VM, maps the VM's disks back to the four physical UGREEN bays, and
+- `ugreen-truenas-zfs.service` polls `lsblk` and `zpool status -pj` inside the
+  TrueNAS VM, maps the VM's disks back to the four physical UGREEN bays, and
   drives `/sys/class/leds/disk1` through `/sys/class/leds/disk4` to show ZFS
-  health, missing disks, and resilvering.
+  health, spindown/standby state, missing disks, and resilvering for any pool
+  associated with those bays.
 
 Both services poll every 30 seconds. Static configuration lives in two systemd
 environment files:
@@ -48,59 +49,50 @@ commonly adjusted settings are `VMID`, `POLL_INTERVAL`, `FAN_PWM_PATH`,
 ## Requirements
 
 - Proxmox running directly on the UGREEN DXP host.
-- TrueNAS Scale running as a Proxmox VM.
-- QEMU guest agent installed and running inside the TrueNAS VM.
-- `sensors -j` available inside the TrueNAS VM for disk temperature polling.
-- `jq`, `lsblk`, and `zpool` available inside the TrueNAS VM for LED state
-  polling.
-- UGREEN fan sysfs devices exposed on the Proxmox host.
+- TrueNAS Scale 25 or newer running as a Proxmox VM.
 - `led-ugreen-dkms` 0.3 or newer installed on the Proxmox host, so disk LEDs are
   exposed under `/sys/class/leds/disk*`.
+- `hdparm` available inside the TrueNAS VM if you want the ZFS LED service to
+  show spun-down/standby disks with the separate spindown color. If it is not
+  available, healthy disks remain shown as normal online disks.
 
-## Install from GitHub Pages
+## Preliminary step: install the UGREEN LED DKMS
 
-After GitHub Pages is enabled from GitHub Actions, publish a release tag such as
-`v0.1.0`. The workflow will build the Debian package, sign the apt repository,
-and publish it at:
+Before installing this package, install the UGREEN LED DKMS from
+[`miskcoo/ugreen_leds_controller`](https://github.com/miskcoo/ugreen_leds_controller/releases)
+on the Proxmox host. This is required because `ugreen-truenas-zfs.service`
+writes to the disk LED sysfs devices exposed by that DKMS.
 
-```text
-https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/
+For now, the DKMS is not provided as an apt repository. It is published as an
+installable Debian package, so download the release `.deb` and install it
+directly:
+
+```bash
+curl -fLO https://github.com/miskcoo/ugreen_leds_controller/releases/download/v0.3/led-ugreen-dkms_0.3_amd64.deb
+sudo apt install ./led-ugreen-dkms_0.3_amd64.deb
 ```
 
-If GitHub rejects a tag deployment with an environment protection error, open
-`Settings -> Environments -> github-pages` and allow deployments from tags that
-match `v*`. Alternatively, run the workflow manually from the default branch and
-set the `version` input to the release version, for example `0.1.0`.
+## Install from signed Debian repository (provided by GitHub Pages)
 
 On the Proxmox host, install the repository signing key, add the signed apt
-repository, install the upstream UGREEN LED DKMS package, and install this
-package:
+repository, and install this package:
 
 ```bash
 sudo install -d -m 0755 /etc/apt/keyrings
+
 curl -fsSL https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/ugreen-dxp-proxmox-truenas.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg >/dev/null
+
 echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://lpaolini.github.io/ugreen-dxp-proxmox-truenas stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
+
 sudo apt update
-curl -fLO https://github.com/miskcoo/ugreen_leds_controller/releases/download/v0.3/led-ugreen-dkms_0.3_amd64.deb
-sudo apt install ./led-ugreen-dkms_0.3_amd64.deb
 sudo apt install ugreen-dxp-proxmox-truenas
-```
-
-The `led-ugreen-dkms` package is a dependency of this package, but it is not
-published in this apt repository. Installing the upstream `.deb` first satisfies
-that dependency.
-
-For a fork or renamed repository, replace the GitHub Pages URL with:
-
-```text
-https://<github-user-or-org>.github.io/<repository-name>/
 ```
 
 The package installs the helpers to `/usr/bin`, installs the systemd units to
 `/lib/systemd/system`, reloads systemd, and enables the fan and ZFS services.
 The services will not run successfully until `VMID` is configured.
 
-After installing, edit both config files and uncomment/set `VMID` to the Proxmox
+So, after installing, edit both config files and uncomment/set `VMID` to the Proxmox
 VM ID of your TrueNAS Scale VM:
 
 ```bash
@@ -121,25 +113,6 @@ sudo systemctl restart ugreen-truenas-fan.service
 sudo systemctl restart ugreen-truenas-zfs.service
 ```
 
-## Repository signing
-
-The GitHub Actions workflow signs the apt repository metadata before publishing
-to GitHub Pages. It expects an ASCII-armored private GPG key in the repository
-secret `APT_SIGNING_KEY`. If the key has a passphrase, also set
-`APT_SIGNING_PASSPHRASE`.
-
-Create a signing key locally:
-
-```bash
-gpg --quick-generate-key "ugreen-dxp-proxmox-truenas apt <lpaolini@users.noreply.github.com>" ed25519 sign 2y
-gpg --list-secret-keys --keyid-format=long
-gpg --armor --export-secret-keys <fingerprint>
-```
-
-Paste the exported private key into `APT_SIGNING_KEY`. The workflow derives and
-publishes the public key as `ugreen-dxp-proxmox-truenas.asc`; client machines use
-that public key through the `signed-by=` apt source option.
-
 ## Build locally
 
 ```bash
@@ -151,3 +124,77 @@ The resulting package will be written to:
 ```text
 dist/ugreen-dxp-proxmox-truenas_0.1.0_all.deb
 ```
+
+## Build a test package on GitHub
+
+For development builds, run the `Build test deb` workflow manually from the
+Actions tab. Set `version` to a prerelease Debian version that the final release
+will upgrade over, for example:
+
+```text
+0.2.0~test20260611
+0.2.0~rc1
+```
+
+Download the workflow artifact and install the `.deb` directly on the Proxmox
+host:
+
+```bash
+sudo apt install ./ugreen-dxp-proxmox-truenas_0.2.0~test20260611_all.deb
+```
+
+The test workflow only uploads an artifact. It does not publish anything to the
+apt repository.
+
+## Forking this project
+
+If you fork this repository and want to publish your own apt repository, set up
+GitHub Pages, recreate the signing secrets, and publish releases with `v*` tags.
+
+1. Enable GitHub Pages for the fork:
+
+   - Open `Settings -> Pages`.
+   - Set the build/deploy source to GitHub Actions.
+
+2. Create a signing key for your fork:
+
+   ```bash
+   gpg --quick-generate-key "ugreen-dxp-proxmox-truenas apt <you@example.com>" ed25519 sign 2y
+   gpg --list-secret-keys --keyid-format=long
+   gpg --armor --export-secret-keys <fingerprint>
+   ```
+
+3. Add repository secrets in `Settings -> Secrets and variables -> Actions`:
+
+   - `APT_SIGNING_KEY`: paste the full ASCII-armored private key exported above.
+   - `APT_SIGNING_PASSPHRASE`: set this only if the signing key has a passphrase.
+
+4. Check the GitHub Pages environment:
+
+   - Open `Settings -> Environments -> github-pages`.
+   - If deployments from tags are restricted, allow tags matching `v*`.
+
+5. Publish a stable version:
+
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+   The `Publish apt repository` workflow builds the Debian package, creates and
+   signs the apt repository metadata, publishes the public signing key, and
+   deploys everything to:
+
+   ```text
+   https://<github-user-or-org>.github.io/<repository-name>/
+   ```
+
+6. Build a test package without publishing it:
+
+   - Open `Actions -> Build test deb -> Run workflow`.
+   - Set `version` to a prerelease version lower than the final release, for
+     example `0.2.0~test20260611` or `0.2.0~rc1`.
+   - Download the `.deb` artifact and install it manually.
+
+After the first successful deployment, use your fork's GitHub Pages URL in the
+apt setup commands instead of `https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/`.
