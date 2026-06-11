@@ -2,6 +2,8 @@ name: Publish apt repository
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -12,7 +14,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -47,6 +49,13 @@ jobs:
       - name: Build deb
         run: ./packaging/build-deb.sh "${{ steps.version.outputs.version }}" dist
 
+      - name: Upload Debian package to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+          generate_release_notes: true
+
       - name: Build apt repository
         shell: bash
         run: |
@@ -58,6 +67,8 @@ jobs:
 
           mkdir -p "${repo}/pool/main/u/${package}"
           cp "dist/${package}_${version}_all.deb" "${repo}/pool/main/u/${package}/"
+          mkdir -p "${repo}/downloads"
+          cp "dist/${package}_${version}_all.deb" "${repo}/downloads/${package}_latest.deb"
 
           mkdir -p \
             "${repo}/dists/stable/main/binary-amd64" \
@@ -144,6 +155,8 @@ jobs:
             printf '%s\n' 'echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://'"${GITHUB_REPOSITORY_OWNER}"'.github.io/'"${GITHUB_REPOSITORY#*/}"' stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list'
             printf '%s\n' 'sudo apt update'
             printf '%s\n' 'sudo apt install ugreen-dxp-proxmox-truenas</pre>'
+            printf '%s\n' '  <p>Or download the latest .deb package directly:</p>'
+            printf '%s\n' '  <p><a href="downloads/ugreen-dxp-proxmox-truenas_latest.deb">ugreen-dxp-proxmox-truenas_latest.deb</a></p>'
             printf '%s\n' '</body>'
             printf '%s\n' '</html>'
           } > "${repo}/index.html"

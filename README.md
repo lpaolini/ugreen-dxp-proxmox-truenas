@@ -90,6 +90,13 @@ sudo apt update
 sudo apt install ugreen-dxp-proxmox-truenas
 ```
 
+Or download and install the latest `.deb` directly:
+
+```bash
+curl -LO https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/downloads/ugreen-dxp-proxmox-truenas_latest.deb
+sudo apt install ./ugreen-dxp-proxmox-truenas_latest.deb
+```
+
 The package installs the helpers to `/usr/bin`, installs the systemd units to
 `/lib/systemd/system`, reloads systemd, and enables the fan and ZFS services.
 The services will not run successfully until `VMID` is configured.
