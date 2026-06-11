@@ -5,6 +5,7 @@
 import argparse
 import json
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -122,16 +123,16 @@ def set_all_leds(state_key):
 
 
 def build_guest_cmd(bays):
-    """Shell command the guest agent runs: ship lsblk, zpool status, and each bay's
+    """Shell command the guest agent runs: ship lsblk, all zpool status, and each bay's
     current disk name back as one JSON object {lsblk, zpool, bays}."""
     lines = [
         "jq -n",
         "--argjson lsblk \"$(lsblk -Jlo NAME,PARTUUID,TYPE,PKNAME 2>/dev/null || echo '{}')\"",
-        "--argjson zpool \"$(zpool status -pj main 2>/dev/null || echo '{}')\"",
+        "--argjson zpool \"$(zpool status -pj 2>/dev/null || echo '{}')\"",
     ]
     for bay, path in bays.items():
         lines.append(
-            f"--arg bay{bay} \"$(readlink -e {path} 2>/dev/null | sed 's|.*/||')\""
+            f"--arg bay{bay} \"$(readlink -e {shlex.quote(path)} 2>/dev/null | sed 's|.*/||')\""
         )
     bays_obj = ",".join(f'"{bay}":$bay{bay}' for bay in bays)
     lines.append("'{lsblk:$lsblk, zpool:$zpool, bays:{" + bays_obj + "}}'")
@@ -220,28 +221,44 @@ def _iter_leaf_disk_vdevs(vdev, ancestor_fill=None):
         yield from _iter_leaf_disk_vdevs(child, fill)
 
 
-def build_vdev_state(zpool_obj):
-    """{partuuid: state} for every leaf disk in the main pool.
+def _pool_leaf_disk_vdevs(pool):
+    for vdev in (pool.get("vdevs") or {}).values():
+        yield from _iter_leaf_disk_vdevs(vdev)
+
+
+def _associated_pool_leaves(zpool_obj, associated_partuuids):
+    """Yield leaf vdevs for pools that contain a configured-bay disk."""
+    wanted = set(associated_partuuids)
+    if not wanted:
+        return
+    for pool in (zpool_obj.get("pools") or {}).values():
+        leaves = list(_pool_leaf_disk_vdevs(pool))
+        if not any((leaf.get("name") in wanted) for leaf, _fill in leaves):
+            continue
+        yield pool, leaves
+
+
+def build_vdev_state(zpool_obj, associated_partuuids):
+    """{partuuid: state} for every leaf disk in pools tied to configured bays.
     ONLINE leaves whose nearest enclosing vdev is ≥ ALERT_THRESHOLD full are
     promoted to ONLINE_ALERT."""
     vdev_state = {}
-    for pool in (zpool_obj.get("pools") or {}).values():
-        for vdev in (pool.get("vdevs") or {}).values():
-            for leaf, fill in _iter_leaf_disk_vdevs(vdev):
-                name, state = leaf.get("name"), leaf.get("state")
-                if not (name and state):
-                    continue
-                if state == "ONLINE" and fill is not None and fill >= ALERT_THRESHOLD:
-                    state = "ONLINE_ALERT"
-                prev = vdev_state.get(name)
-                if prev is None or STATE_RANK.get(state, UNRANKED) > STATE_RANK.get(prev, 0):
-                    vdev_state[name] = state
+    for _pool, leaves in _associated_pool_leaves(zpool_obj, associated_partuuids):
+        for leaf, fill in leaves:
+            name, state = leaf.get("name"), leaf.get("state")
+            if not (name and state):
+                continue
+            if state == "ONLINE" and fill is not None and fill >= ALERT_THRESHOLD:
+                state = "ONLINE_ALERT"
+            prev = vdev_state.get(name)
+            if prev is None or STATE_RANK.get(state, UNRANKED) > STATE_RANK.get(prev, 0):
+                vdev_state[name] = state
     return vdev_state
 
 
-def is_resilvering(zpool_obj):
-    """True if any pool has an active RESILVER scan."""
-    for pool in (zpool_obj.get("pools") or {}).values():
+def is_resilvering(zpool_obj, associated_partuuids):
+    """True if any associated pool has an active RESILVER scan."""
+    for pool, _leaves in _associated_pool_leaves(zpool_obj, associated_partuuids):
         scan = pool.get("scan_stats") or {}
         if scan.get("function") == "RESILVER" and scan.get("state") not in ("NONE", "FINISHED", None):
             return True
@@ -298,8 +315,14 @@ def control_once():
 
     bays, lsblk, zpool = report
     device_to_partuuids = build_device_to_partuuids(lsblk)
-    vdev_state = build_vdev_state(zpool)
-    resilvering = is_resilvering(zpool)
+    bay_partuuids = {
+        partuuid
+        for device in bays.values()
+        if device
+        for partuuid in device_to_partuuids.get(device, [])
+    }
+    vdev_state = build_vdev_state(zpool, bay_partuuids)
+    resilvering = is_resilvering(zpool, bay_partuuids)
 
     update_leds(bays, device_to_partuuids, vdev_state, resilvering)
     return True
