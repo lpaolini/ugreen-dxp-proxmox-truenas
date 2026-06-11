@@ -52,7 +52,7 @@ commonly adjusted settings are `VMID`, `POLL_INTERVAL`, `FAN_PWM_PATH`,
 
 - Proxmox running directly on the UGREEN DXP host.
 - TrueNAS Scale 25 or newer running as a Proxmox VM.
-- `led-ugreen-dkms` 0.3 or newer installed on the Proxmox host, so disk LEDs are
+- `ugreen-dxp-leds-dkms` installed on the Proxmox host, so disk LEDs are
   exposed under `/sys/class/leds/disk*`.
 - `hdparm` available inside the TrueNAS VM if you want the ZFS LED service to
   show spun-down/standby disks with the separate spindown color. If it is not
@@ -60,18 +60,18 @@ commonly adjusted settings are `VMID`, `POLL_INTERVAL`, `FAN_PWM_PATH`,
 
 ## Preliminary step: install the UGREEN LED DKMS
 
-Before installing this package, install the UGREEN LED DKMS from
-[`miskcoo/ugreen_leds_controller`](https://github.com/miskcoo/ugreen_leds_controller/releases)
+Before installing this package, install the UGREEN DXP LED DKMS from
+[`lpaolini/ugreen-dxp-leds-dkms`](https://github.com/lpaolini/ugreen-dxp-leds-dkms)
 on the Proxmox host. This is required because `ugreen-truenas-zfs.service`
 writes to the disk LED sysfs devices exposed by that DKMS.
 
 For now, the DKMS is not provided as an apt repository. It is published as an
-installable Debian package, so download the release `.deb` and install it
-directly:
+installable Debian package, so download the release `.deb` from
+[`lpaolini/ugreen-dxp-leds-dkms` releases](https://github.com/lpaolini/ugreen-dxp-leds-dkms/releases)
+and install it directly:
 
 ```bash
-curl -fLO https://github.com/miskcoo/ugreen_leds_controller/releases/download/v0.3/led-ugreen-dkms_0.3_amd64.deb
-sudo apt install ./led-ugreen-dkms_0.3_amd64.deb
+sudo apt install ./ugreen-dxp-leds-dkms_*_amd64.deb
 ```
 
 ## Install from signed Debian repository (provided by GitHub Pages)

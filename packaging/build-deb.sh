@@ -44,7 +44,7 @@ Section: utils
 Priority: optional
 Architecture: all
 Maintainer: lpaolini <lpaolini@users.noreply.github.com>
-Depends: python3, systemd, qemu-server, led-ugreen-dkms (>= 0.3)
+Depends: python3, systemd, qemu-server, ugreen-dxp-leds-dkms
 Description: UGREEN DXP Proxmox/TrueNAS fan and ZFS LED helpers
  Systemd units and Python helpers for driving UGREEN fan PWM and front-panel
  disk LEDs from a TrueNAS VM running under Proxmox.
