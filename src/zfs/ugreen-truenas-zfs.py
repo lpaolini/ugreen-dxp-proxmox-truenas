@@ -40,11 +40,12 @@ class LedState:
 # FAULTED, UNAVAIL, REMOVED, OFFLINE) double as keys here so apply_disk_leds can
 # use them directly. The four "bad" rows currently share one red-blink presentation
 # but are kept as distinct entries so they can diverge later. The remaining keys
-# (RESILVER, MISSING, OFF, CHECKING, ERROR) are script-internal.
+# (SPINDOWN, RESILVER, MISSING, OFF, CHECKING, ERROR) are script-internal.
 STATES = {
     "OFF":          LedState("0 0 0",     "none",               1),
     "CHECKING":     LedState(None,        "blink 100 100",    None),
     "ONLINE":       LedState("0 40 0",    "none",             255),
+    "SPINDOWN":     LedState("0 20 60",   "none",             255),
     "ONLINE_ALERT": LedState("40 40 0",   "none",             255),
     "DEGRADED":     LedState("80 40 0",   "blink 500 500",    255),
     "FAULTED":      LedState("80 0 0",    "blink 500 500",    255),
@@ -87,6 +88,18 @@ def require_vmid():
     return False
 
 
+def _guest_spindown_arg(bay, path):
+    quoted = shlex.quote(path)
+    return (
+        f"--arg spindown{bay} \"$("
+        "if command -v hdparm >/dev/null 2>&1; then "
+        f"hdparm -C {quoted} 2>/dev/null | "
+        "awk -F: '/drive state is/ {gsub(/^[ \\t]+|[ \\t]+$/, \"\", $2); print $2}'"
+        "; fi"
+        ")\""
+    )
+
+
 def _write(path, value):
     try:
         with open(path, "w") as f:
@@ -124,7 +137,7 @@ def set_all_leds(state_key):
 
 def build_guest_cmd(bays):
     """Shell command the guest agent runs: ship lsblk, all zpool status, and each bay's
-    current disk name back as one JSON object {lsblk, zpool, bays}."""
+    current disk name and power state back as one JSON object."""
     lines = [
         "jq -n",
         "--argjson lsblk \"$(lsblk -Jlo NAME,PARTUUID,TYPE,PKNAME 2>/dev/null || echo '{}')\"",
@@ -134,8 +147,16 @@ def build_guest_cmd(bays):
         lines.append(
             f"--arg bay{bay} \"$(readlink -e {shlex.quote(path)} 2>/dev/null | sed 's|.*/||')\""
         )
+        lines.append(_guest_spindown_arg(bay, path))
     bays_obj = ",".join(f'"{bay}":$bay{bay}' for bay in bays)
-    lines.append("'{lsblk:$lsblk, zpool:$zpool, bays:{" + bays_obj + "}}'")
+    spindown_obj = ",".join(f'"{bay}":$spindown{bay}' for bay in bays)
+    lines.append(
+        "'{lsblk:$lsblk, zpool:$zpool, bays:{"
+        + bays_obj
+        + "}, spindown:{"
+        + spindown_obj
+        + "}}'"
+    )
     return " ".join(lines)
 
 
@@ -176,9 +197,10 @@ def fetch_guest_report():
         # return json.loads(out)
         report = json.loads(out)
         bays = report.get("bays", {})
+        spindown = report.get("spindown", {})
         lsblk = report.get("lsblk", {})
         zpool = report.get("zpool", {})
-        return bays, lsblk, zpool
+        return bays, spindown, lsblk, zpool
     except json.JSONDecodeError as e:
         log(f"guest JSON parse failed: {e}; raw={out[:200]!r}")
         set_all_leds("ERROR")
@@ -265,7 +287,12 @@ def is_resilvering(zpool_obj, associated_partuuids):
     return False
 
 
-def update_leds(bays, device_to_partuuids, vdev_state, resilvering):
+def is_spindown_state(power_state):
+    normalized = (power_state or "").strip().lower()
+    return normalized in ("standby", "sleeping")
+
+
+def update_leds(bays, spindown, device_to_partuuids, vdev_state, resilvering):
     """Paint each populated bay for its disk's ZFS state.
     Returns (empty_bays, present_partuuids)."""
     present_partuuids = set()
@@ -281,10 +308,16 @@ def update_leds(bays, device_to_partuuids, vdev_state, resilvering):
         states = [vdev_state[p] for p in partuuids if p in vdev_state]
         zpool_state = max(states, key=lambda s: STATE_RANK.get(s, UNRANKED)) if states else None
 
-        dbg(f"Bay {bay}: device={device} partuuids={partuuids} state={zpool_state}")
+        power_state = spindown.get(bay, "")
+        dbg(
+            f"Bay {bay}: device={device} partuuids={partuuids} "
+            f"state={zpool_state} power={power_state!r}"
+        )
         key = zpool_state if zpool_state in STATES else "OFF"
         if key in ("ONLINE", "ONLINE_ALERT") and resilvering:
             key = "RESILVER"
+        elif key == "ONLINE" and is_spindown_state(power_state):
+            key = "SPINDOWN"
         set_led(bay, key)
 
     populated = sum(1 for b in BAYS if bays.get(b))
@@ -313,7 +346,7 @@ def control_once():
     if report is None:
         return False
 
-    bays, lsblk, zpool = report
+    bays, spindown, lsblk, zpool = report
     device_to_partuuids = build_device_to_partuuids(lsblk)
     bay_partuuids = {
         partuuid
@@ -324,7 +357,7 @@ def control_once():
     vdev_state = build_vdev_state(zpool, bay_partuuids)
     resilvering = is_resilvering(zpool, bay_partuuids)
 
-    update_leds(bays, device_to_partuuids, vdev_state, resilvering)
+    update_leds(bays, spindown, device_to_partuuids, vdev_state, resilvering)
     return True
 
 
