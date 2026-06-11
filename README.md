@@ -218,3 +218,7 @@ GitHub Pages, recreate the signing secrets, and publish releases with `v*` tags.
 
 After the first successful deployment, use your fork's GitHub Pages URL in the
 apt setup commands instead of `https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/`.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
