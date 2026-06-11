@@ -1,4 +1,4 @@
-# ugreen-dxp-proxmox-truenas
+# UGREEN DXP Proxmox-TrueNAS LED/fan helper
 
 ![](docs/assets/led-mixed-state-demo.gif)
 
