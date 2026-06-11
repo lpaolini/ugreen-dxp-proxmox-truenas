@@ -1,0 +1,32 @@
+name: Build test deb
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version, for example 0.2.0~test20260611"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Debian tooling
+        run: sudo apt-get update && sudo apt-get install -y dpkg-dev
+
+      - name: Build deb
+        run: ./packaging/build-deb.sh "${{ inputs.version }}" dist
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ugreen-dxp-proxmox-truenas_${{ inputs.version }}_all
+          path: dist/*.deb
+          if-no-files-found: error
