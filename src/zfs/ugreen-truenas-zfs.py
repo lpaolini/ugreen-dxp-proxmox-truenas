@@ -46,7 +46,7 @@ STATES = {
     "CHECKING":     LedState(None,        "blink 100 100",    None),
     "ONLINE":       LedState("0 40 0",    "none",             255),
     "SPINDOWN":     LedState("0 20 60",   "none",             255),
-    "ONLINE_ALERT": LedState("40 40 0",   "none",             255),
+    "ONLINE_ALERT": LedState("0 40 0",    "blink 500 500",    255),
     "DEGRADED":     LedState("80 40 0",   "blink 500 500",    255),
     "FAULTED":      LedState("80 0 0",    "blink 500 500",    255),
     "UNAVAIL":      LedState("80 0 0",    "blink 500 500",    255),
