@@ -1,5 +1,7 @@
 # ugreen-dxp-proxmox-truenas
 
+![](docs/assets/led-mixed-state-demo.gif)
+
 Systemd services and Python helpers for driving UGREEN DXP fan PWM and
 front-panel disk LEDs from a TrueNAS VM running under Proxmox.
 
@@ -112,6 +114,24 @@ Then restart the services so systemd starts them with the updated configuration:
 sudo systemctl restart ugreen-truenas-fan.service
 sudo systemctl restart ugreen-truenas-zfs.service
 ```
+
+## LED showcase
+
+|  | State | Description | Color | Effect |
+| --- | --- | --- | --- | --- |
+| <img src="docs/assets/led-states/off.gif" alt="OFF LED" width="36"> | `OFF` | Empty bay or cleared LED | `0 0 0` | `none` |
+| <img src="docs/assets/led-states/checking.gif" alt="CHECKING LED" width="36"> | `CHECKING` | Querying the TrueNAS VM; previous color is preserved | `unchanged` | `blink 100 100` |
+| <img src="docs/assets/led-states/online.gif" alt="ONLINE LED" width="36"> | `ONLINE` | Healthy online disk | `0 40 0` | `none` |
+| <img src="docs/assets/led-states/online-alert.gif" alt="ONLINE_ALERT LED" width="36"> | `ONLINE_ALERT` | Healthy disk in a pool at or above `ALERT_THRESHOLD` | `0 40 0` | `blink 500 500` |
+| <img src="docs/assets/led-states/spindown.gif" alt="SPINDOWN LED" width="36"> | `SPINDOWN` | Healthy disk in standby/spindown | `0 20 60` | `none` |
+| <img src="docs/assets/led-states/degraded.gif" alt="DEGRADED LED" width="36"> | `DEGRADED` | ZFS reports a degraded leaf vdev | `80 40 0` | `blink 500 500` |
+| <img src="docs/assets/led-states/faulted.gif" alt="FAULTED LED" width="36"> | `FAULTED` | ZFS reports a failed leaf vdev | `80 0 0` | `blink 500 500` |
+| <img src="docs/assets/led-states/unavail.gif" alt="UNAVAIL LED" width="36"> | `UNAVAIL` | ZFS reports an unavailable leaf vdev | `80 0 0` | `blink 500 500` |
+| <img src="docs/assets/led-states/removed.gif" alt="REMOVED LED" width="36"> | `REMOVED` | ZFS reports a removed leaf vdev | `80 0 0` | `blink 500 500` |
+| <img src="docs/assets/led-states/offline.gif" alt="OFFLINE LED" width="36"> | `OFFLINE` | ZFS reports an offline leaf vdev | `80 0 0` | `blink 500 500` |
+| <img src="docs/assets/led-states/resilver.gif" alt="RESILVER LED" width="36"> | `RESILVER` | Any associated pool is resilvering | `80 80 80` | `blink 500 500` |
+| <img src="docs/assets/led-states/missing.gif" alt="MISSING LED" width="36"> | `MISSING` | A configured pool leaf is not present in any mapped bay | `40 0 40` | `blink 500 500` |
+| <img src="docs/assets/led-states/error.gif" alt="ERROR LED" width="36"> | `ERROR` | The service could not query or parse the TrueNAS VM status | `80 0 0` | `none` |
 
 ## Build locally
 
