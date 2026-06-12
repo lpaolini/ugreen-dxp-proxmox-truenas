@@ -71,7 +71,7 @@ jobs:
 
           package="ugreen-dxp-proxmox-truenas"
           version="${{ steps.version.outputs.version }}"
-          repo_root="${PWD}/public/debian"
+          repo_root="${PWD}/public"
           suite="stable"
           component="main"
           architectures="amd64 all"
@@ -166,8 +166,8 @@ jobs:
             printf '%s\n' '<body>'
             printf '%s\n' '  <h1>UGREEN DXP Proxmox TrueNAS Debian Repository</h1>'
             printf '%s\n' '  <pre>sudo install -d -m 0755 /etc/apt/keyrings'
-            printf '%s\n' 'curl -fsSL '"${base_url}"'/debian/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg'
-            printf '%s\n' 'echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] '"${base_url}"'/debian stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list'
+            printf '%s\n' 'curl -fsSL '"${base_url}"'/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg'
+            printf '%s\n' 'echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] '"${base_url}"' stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list'
             printf '%s\n' 'sudo apt update'
             printf '%s\n' 'sudo apt install ugreen-dxp-proxmox-truenas</pre>'
             printf '%s\n' '  <p>Or download the latest .deb package directly:</p>'

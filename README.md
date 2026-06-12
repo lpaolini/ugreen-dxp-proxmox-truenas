@@ -83,9 +83,9 @@ repository, and install this package:
 ```bash
 sudo install -d -m 0755 /etc/apt/keyrings
 
-curl -fsSL https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/debian/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg
+curl -fsSL https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg
 
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/debian stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-proxmox-truenas.gpg] https://lpaolini.github.io/ugreen-dxp-proxmox-truenas stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-proxmox-truenas.list
 
 sudo apt update
 sudo apt install ugreen-dxp-proxmox-truenas
@@ -225,7 +225,7 @@ GitHub Pages, recreate the signing secrets, and publish releases with `v*` tags.
    - Download the `.deb` artifact and install it manually.
 
 After the first successful deployment, use your fork's GitHub Pages URL in the
-apt setup commands instead of `https://lpaolini.github.io/ugreen-dxp-proxmox-truenas/`.
+apt setup commands instead of `https://lpaolini.github.io/ugreen-dxp-proxmox-truenas`.
 
 ## License
 
